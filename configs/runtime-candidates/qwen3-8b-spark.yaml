@@ -1,0 +1,43 @@
+# Runtime candidate for NVIDIA DGX Spark — optional profile.
+# Do not invent NVIDIA NIM digests. Record source + inspection date only.
+# Host ``requires`` apply only during admit of this candidate.
+
+candidate:
+  source: "docker.io/vllm/vllm-openai:latest (linux/arm64 platform manifest)"
+  inspected_at: "2026-09-28"
+  notes: >
+    ARM64 platform digest from `docker buildx imagetools inspect vllm/vllm-openai:latest`.
+    CUDA 13.0 hosts may prefer a cu130 nightly arm64 digest after local smoke.
+    Compatibility with sm_121 / Qwen3-8B is unclaimed until smoke succeeds here.
+
+requires:
+  arch: [aarch64, arm64]
+  os: Linux
+  platform: linux/arm64
+  nvidia: true
+  docker: true
+
+runtime:
+  engine: vllm
+  image: "vllm/vllm-openai@sha256:4864d46625cbc3307623e29ac742030655e27249feba7b97ec925ce4cc4dfb56"
+  platform: linux/arm64
+  bind:
+    host: "127.0.0.1"
+    port: 8000
+  require_api_token: true
+
+model:
+  repo: Qwen/Qwen3-8B
+  local_dir: qwen3-8b
+  served_name: qwen3-8b
+  dtype: bfloat16
+
+resources:
+  gpu_memory_utilization: 0.75
+  max_model_len: 8192
+  disk_preferred_gb: 500
+
+fallback:
+  engine: llama.cpp
+  format: GGUF
+  note: "Use only if vLLM smoke fails on this Spark; primary path remains vLLM."
