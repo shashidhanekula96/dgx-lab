@@ -1,0 +1,4 @@
+{"id": "smoke-hello", "messages": [{"role": "user", "content": "Say the single word: hello"}], "expect_contains": ["hello"], "max_tokens": 16}
+{"id": "smoke-math", "messages": [{"role": "user", "content": "What is 2+2? Reply with only the number."}], "expect_regex": ["\\b4\\b"], "max_tokens": 16}
+{"id": "smoke-json", "messages": [{"role": "user", "content": "Return a JSON object with keys status and value. status must be ok and value must be 1. No other text."}], "expect_json_keys": ["status", "value"], "expect_regex": ["\"status\"\\s*:\\s*\"ok\""], "max_tokens": 64}
+{"id": "smoke-refuse-empty", "messages": [{"role": "user", "content": "Reply with exactly: pong"}], "expect_contains": ["pong"], "max_tokens": 16}
