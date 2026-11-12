@@ -1,0 +1,18 @@
+# Shared experiment defaults (extended by concrete experiments).
+name: base
+promotion:
+  require_kpi_pass: true
+  require_locked_runtime: true
+resources:
+  max_concurrent_requests: 4
+  timeout_s: 120
+serve:
+  base_url: http://127.0.0.1:8000
+  model_name: qwen3-8b
+eval:
+  golden: evals/golden/smoke.jsonl
+kpis:
+  config: configs/kpis/default.yaml
+tracking:
+  backend: local
+  root: ${DGX_LAB_ROOT:-~/dgx-lab}/records
