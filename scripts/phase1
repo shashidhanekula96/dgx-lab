@@ -1,0 +1,259 @@
+#!/usr/bin/env bash
+# Copyright (c) 2026 Shashikanth Dhanekula
+# SPDX-License-Identifier: MIT
+# Operator workflow (Linux/macOS convenience). Windows: use `uv run dgxlab ...`.
+# Subcommands: init | check-host | download-model | admit | serve | smoke | lock | run-baseline
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export PATH="${HOME}/.local/bin:${PATH}"
+export PYTHONPATH="${ROOT}/src${PYTHONPATH:+:${PYTHONPATH}}"
+
+DGX_LAB_ROOT="${DGX_LAB_ROOT:-${HOME}/dgx-lab}"
+COMPOSE_FILE="${COMPOSE_FILE:-${ROOT}/deployments/qwen3-8b-vllm.compose.yaml}"
+CANDIDATE_CFG="${CANDIDATE_CFG:-${ROOT}/configs/runtime-candidates/qwen3-8b-spark.yaml}"
+EXPERIMENT_CFG="${EXPERIMENT_CFG:-${ROOT}/configs/experiments/baseline-qwen3-8b.yaml}"
+KPI_CFG="${KPI_CFG:-${ROOT}/configs/kpis/default.yaml}"
+GOLDEN="${GOLDEN:-${ROOT}/evals/golden/smoke.jsonl}"
+MODEL_DIR="${MODEL_DIR:-${DGX_LAB_ROOT}/models/qwen3-8b}"
+MODEL_REPO="${MODEL_REPO:-Qwen/Qwen3-8B}"
+SERVE_HOST="${SERVE_HOST:-127.0.0.1}"
+SERVE_PORT="${SERVE_PORT:-8000}"
+SERVE_BIND_HOST="${SERVE_BIND_HOST:-${SERVE_HOST}}"
+ALLOW_NON_LOOPBACK_BIND="${ALLOW_NON_LOOPBACK_BIND:-0}"
+BASE_URL="${BASE_URL:-http://${SERVE_HOST}:${SERVE_PORT}}"
+
+die() { echo "ERROR: $*" >&2; exit 1; }
+info() { echo "==> $*"; }
+
+need_uv() {
+  command -v uv >/dev/null 2>&1 || die "uv not found; install from https://docs.astral.sh/uv/ and ensure it is on PATH"
+}
+
+py() {
+  need_uv
+  (cd "${ROOT}" && uv run --quiet python "$@")
+}
+
+dgxlab() {
+  need_uv
+  (cd "${ROOT}" && uv run --quiet dgxlab "$@")
+}
+
+is_loopback_host() {
+  case "$1" in
+    127.0.0.1|localhost|::1|[::1]) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+cmd_init() {
+  info "Initializing data root at ${DGX_LAB_ROOT}"
+  mkdir -p \
+    "${DGX_LAB_ROOT}/models" \
+    "${DGX_LAB_ROOT}/datasets" \
+    "${DGX_LAB_ROOT}/adapters" \
+    "${DGX_LAB_ROOT}/evals" \
+    "${DGX_LAB_ROOT}/records" \
+    "${DGX_LAB_ROOT}/logs"
+  need_uv
+  (cd "${ROOT}" && uv sync --group dev)
+  if [[ -z "${DGX_LAB_API_TOKEN:-}" ]]; then
+    if [[ -f "${DGX_LAB_ROOT}/.api_token" ]]; then
+      info "Reusing token from ${DGX_LAB_ROOT}/.api_token"
+    else
+      token="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
+      umask 077
+      printf '%s\n' "${token}" > "${DGX_LAB_ROOT}/.api_token"
+      info "Wrote new DGX_LAB_API_TOKEN to ${DGX_LAB_ROOT}/.api_token"
+    fi
+  fi
+  info "init complete"
+  echo "Export before serve/smoke:"
+  echo "  export DGX_LAB_API_TOKEN=\$(cat ${DGX_LAB_ROOT}/.api_token)"
+  echo "  export VLLM_IMAGE='vllm/vllm-openai@sha256:<64hex>'  # see candidate config"
+  echo "Credits: $(cd "${ROOT}" && uv run --quiet dgxlab credits | head -n 1)"
+}
+
+cmd_check_host() {
+  info "Detecting host profile (multi-OS)"
+  if [[ "${PROBE_DOCKER_GPU:-0}" == "1" ]]; then
+    dgxlab check-host --json --probe-docker-gpu
+  else
+    dgxlab check-host --json
+  fi
+}
+
+cmd_download_model() {
+  info "Downloading ${MODEL_REPO} -> ${MODEL_DIR}"
+  mkdir -p "$(dirname "${MODEL_DIR}")"
+  if [[ -d "${MODEL_DIR}" ]] && compgen -G "${MODEL_DIR}/*.safetensors" > /dev/null 2>&1; then
+    info "Model weights already present under ${MODEL_DIR}; skipping download"
+    return 0
+  fi
+  if [[ -z "${HF_TOKEN:-}" ]]; then
+    echo "NOTE: HF_TOKEN not set. Public models may still download;"
+    echo "      gated repos require: export HF_TOKEN=..."
+  fi
+  if command -v hf >/dev/null 2>&1; then
+    hf download "${MODEL_REPO}" --local-dir "${MODEL_DIR}"
+  elif command -v huggingface-cli >/dev/null 2>&1; then
+    huggingface-cli download "${MODEL_REPO}" --local-dir "${MODEL_DIR}"
+  else
+    need_uv
+    (cd "${ROOT}" && uv pip install --quiet huggingface_hub)
+    py - <<PY
+from huggingface_hub import snapshot_download
+import os
+snapshot_download(
+    repo_id="${MODEL_REPO}",
+    local_dir="${MODEL_DIR}",
+    token=os.environ.get("HF_TOKEN") or None,
+)
+print("downloaded to ${MODEL_DIR}")
+PY
+  fi
+  info "download-model complete"
+}
+
+cmd_admit() {
+  : "${VLLM_IMAGE:?VLLM_IMAGE required — digest pin like vllm/vllm-openai@sha256:<64hex>}"
+  info "Admitting candidate ${VLLM_IMAGE} against ${CANDIDATE_CFG}"
+  DGX_LAB_ROOT="${DGX_LAB_ROOT}" VLLM_IMAGE="${VLLM_IMAGE}" CANDIDATE_CFG="${CANDIDATE_CFG}" py - <<'PY'
+from pathlib import Path
+import json, os
+from dgx_lab.runtime import admit_candidate
+rec = admit_candidate(Path(os.environ["CANDIDATE_CFG"]), root=Path(os.environ["DGX_LAB_ROOT"]))
+print(json.dumps(rec, indent=2, default=str))
+print("Admit preflight OK — NOT locked. Proceed to serve → smoke → lock.")
+PY
+}
+
+cmd_serve() {
+  : "${VLLM_IMAGE:?VLLM_IMAGE required}"
+  : "${DGX_LAB_API_TOKEN:?DGX_LAB_API_TOKEN required}"
+  if ! is_loopback_host "${SERVE_BIND_HOST}"; then
+    if [[ "${ALLOW_NON_LOOPBACK_BIND}" != "1" ]]; then
+      die "Refusing to publish on ${SERVE_BIND_HOST}; set ALLOW_NON_LOOPBACK_BIND=1 to opt in (still requires API token)"
+    fi
+    info "WARNING: non-loopback bind enabled via ALLOW_NON_LOOPBACK_BIND=1 (${SERVE_BIND_HOST})"
+  fi
+  [[ -d "${MODEL_DIR}" ]] || die "Model dir missing: ${MODEL_DIR} (run download-model)"
+  info "Starting vLLM compose on ${SERVE_BIND_HOST}:${SERVE_PORT}"
+  export VLLM_IMAGE DGX_LAB_API_TOKEN MODEL_DIR DGX_LAB_ROOT SERVE_BIND_HOST SERVE_PORT
+  export SERVED_MODEL_NAME="${SERVED_MODEL_NAME:-qwen3-8b}"
+  docker compose -f "${COMPOSE_FILE}" up -d
+  info "serve started; logs: docker compose -f ${COMPOSE_FILE} logs -f"
+}
+
+cmd_smoke() {
+  : "${DGX_LAB_API_TOKEN:?DGX_LAB_API_TOKEN required}"
+  info "Smoke chat completion against ${BASE_URL}"
+  DGX_LAB_API_TOKEN="${DGX_LAB_API_TOKEN}" BASE_URL="${BASE_URL}" SERVE_HOST="${SERVE_HOST}" \
+  ALLOW_REMOTE_SMOKE="${ALLOW_REMOTE_SMOKE:-0}" DGX_LAB_ROOT="${DGX_LAB_ROOT}" py - <<'PY'
+import json, os, sys
+from pathlib import Path
+from dgx_lab.runtime import smoke_chat
+from dgx_lab.tracking import write_json
+allow_remote = os.environ.get("ALLOW_REMOTE_SMOKE") == "1"
+result = smoke_chat(
+    base_url=os.environ["BASE_URL"],
+    token=os.environ["DGX_LAB_API_TOKEN"],
+    model=os.environ.get("SERVED_MODEL_NAME", "qwen3-8b"),
+    bind_host=os.environ.get("SERVE_HOST", "127.0.0.1"),
+    allow_remote=allow_remote,
+)
+print(json.dumps(result, indent=2, default=str))
+write_json(Path(os.environ["DGX_LAB_ROOT"]) / "records" / "smoke.latest.json", result)
+sys.exit(0 if result.get("ok") else 1)
+PY
+}
+
+cmd_lock() {
+  info "Locking admitted digest + model SHA (requires smoke OK)"
+  DGX_LAB_ROOT="${DGX_LAB_ROOT}" MODEL_DIR="${MODEL_DIR}" py - <<'PY'
+import json, os, sys
+from pathlib import Path
+from dgx_lab.runtime import lock_runtime
+from dgx_lab.tracking import read_json
+
+root = Path(os.environ["DGX_LAB_ROOT"])
+smoke_path = root / "records" / "smoke.latest.json"
+if not smoke_path.exists():
+    print("ERROR: no smoke.latest.json — run smoke first", file=sys.stderr)
+    sys.exit(1)
+smoke = read_json(smoke_path)
+try:
+    payload = lock_runtime(
+        root=root,
+        model_dir=Path(os.environ["MODEL_DIR"]),
+        smoke_result=smoke,
+    )
+except Exception as exc:
+    print(f"ERROR: {exc}", file=sys.stderr)
+    sys.exit(1)
+print(json.dumps(payload, indent=2))
+PY
+}
+
+cmd_run_baseline() {
+  : "${DGX_LAB_API_TOKEN:?DGX_LAB_API_TOKEN required}"
+  info "Running baseline experiment with golden eval + KPI gates"
+  dgxlab run "${EXPERIMENT_CFG}" --execute \
+    --token "${DGX_LAB_API_TOKEN}" \
+    --base-url "${BASE_URL}" \
+    --kpi-config "${KPI_CFG}" \
+    --golden "${GOLDEN}"
+}
+
+usage() {
+  cat <<EOF
+Usage: ./scripts/phase1 <command>
+
+Copyright (c) 2026 Shashikanth Dhanekula — SPDX-License-Identifier: MIT
+
+Commands:
+  init             Create data root layout, uv sync, API token
+  check-host       Detect OS/arch/CPU/memory/GPU profile (always CLI-ready)
+  download-model   Fetch model weights into \$DGX_LAB_ROOT/models/...
+  admit            Digest-pin + host-requires preflight for VLLM_IMAGE
+  serve            docker compose up (loopback by default, token-gated)
+  smoke            Chat completion smoke test (loopback or https remote)
+  lock             Persist admitted digest + model SHA after smoke OK
+  run-baseline     Freeze config, golden eval, KPI gates
+
+Environment:
+  VLLM_IMAGE               required for admit/serve (image@sha256:...)
+  DGX_LAB_API_TOKEN        required for serve/smoke/run-baseline
+  HF_TOKEN                 optional; needed for gated Hugging Face repos
+  DGX_LAB_ROOT             default: ~/dgx-lab
+  CANDIDATE_CFG            runtime candidate YAML (Spark profile is optional)
+  BASE_URL                 default http://127.0.0.1:8000; use https:// for cluster
+  ALLOW_NON_LOOPBACK_BIND  set to 1 to publish compose on a non-loopback host
+  ALLOW_REMOTE_SMOKE       set to 1 to smoke against a non-loopback BASE_URL
+  DGX_LAB_OPERATOR         optional operator name stored on run records
+
+Windows tip:
+  Use: uv sync --group dev && uv run dgxlab check-host
+EOF
+}
+
+main() {
+  local cmd="${1:-}"
+  shift || true
+  case "${cmd}" in
+    init) cmd_init "$@";;
+    check-host) cmd_check_host "$@";;
+    download-model) cmd_download_model "$@";;
+    admit) cmd_admit "$@";;
+    serve) cmd_serve "$@";;
+    smoke) cmd_smoke "$@";;
+    lock) cmd_lock "$@";;
+    run-baseline) cmd_run_baseline "$@";;
+    -h|--help|help) usage; exit 0;;
+    "") usage; exit 1;;
+    *) die "unknown command: ${cmd}";;
+  esac
+}
+
+main "$@"
