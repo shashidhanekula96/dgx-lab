@@ -1,0 +1,15 @@
+# Phase 1 KPI gates — local metrics only (no remote telemetry).
+version: 1
+gates:
+  success_rate:
+    min: 0.8
+    description: Fraction of golden cases that pass substring/regex/JSON checks
+  format_validity_rate:
+    min: 0.8
+    description: Fraction of cases with valid expected format
+  mean_latency_ms:
+    max: 30000
+    description: Mean end-to-end chat latency (ms) on loopback
+  tokens_per_second:
+    min: 1.0
+    description: Aggregate completion tokens / wall time (floor for smoke suite)
