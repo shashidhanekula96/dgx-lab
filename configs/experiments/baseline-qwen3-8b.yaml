@@ -1,0 +1,26 @@
+extends: base.yaml
+
+name: baseline-qwen3-8b
+description: Phase 1 baseline — Qwen3-8B on digest-pinned ARM64 vLLM (loopback).
+
+runtime:
+  candidate: configs/runtime-candidates/qwen3-8b-spark.yaml
+
+model:
+  repo: Qwen/Qwen3-8B
+  served_name: qwen3-8b
+
+serve:
+  model_name: qwen3-8b
+  max_tokens: 64
+  temperature: 0
+
+eval:
+  golden: evals/golden/smoke.jsonl
+  suite: smoke
+
+tags:
+  - phase1
+  - baseline
+  - qwen3-8b
+  - vllm
