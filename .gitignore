@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Local lab data (lives under ~/dgx-lab, but ignore if symlinked)
+dgx-lab/
+records/
+logs/
+models/
+datasets/
+adapters/
+evals/results/
+
+# uv / lock noise (keep uv.lock if present)
+*.log
