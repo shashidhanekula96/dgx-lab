@@ -1,0 +1,76 @@
+name: Release
+
+# Manual release: Actions → Release → Run workflow → enter the version (e.g. 0.2.0).
+# Tags the current main commit as v<version>, builds wheel + sdist, and publishes a
+# GitHub Release whose notes are that version's section of CHANGELOG.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, without the v (must match pyproject.toml)"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ inputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Only release from main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "Run this workflow from the main branch (got $GITHUB_REF)" >&2
+          exit 1
+
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+
+      - name: Validate version
+        run: |
+          # Reject anything that isn't a plain semver (also blocks shell injection).
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([a-z0-9.-]*)?$ ]]; then
+            echo "Invalid version: $VERSION" >&2; exit 1
+          fi
+          project_version="$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -n1)"
+          if [[ "$project_version" != "$VERSION" ]]; then
+            echo "pyproject.toml version is $project_version, not $VERSION" >&2; exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null; then
+            echo "Tag v$VERSION already exists" >&2; exit 1
+          fi
+
+      - name: Extract release notes from CHANGELOG.md
+        run: |
+          awk -v ver="$VERSION" '$0 ~ "^## \\[" ver "\\]" {f=1; next} f && /^## \[/ {exit} f' \
+            CHANGELOG.md > notes.md
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "No CHANGELOG.md section found for [$VERSION]" >&2; exit 1
+          fi
+          cat notes.md
+
+      - name: Test
+        run: |
+          uv sync --frozen --group dev
+          uv run pytest -q
+
+      - name: Build
+        run: uv build
+
+      - name: Create tag and GitHub Release
+        run: |
+          gh release create "v$VERSION" dist/* \
+            --target "$GITHUB_SHA" \
+            --title "dgx-lab $VERSION" \
+            --notes-file notes.md
