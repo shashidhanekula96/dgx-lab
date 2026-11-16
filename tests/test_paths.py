@@ -42,7 +42,7 @@ def test_circular_extends(tmp_path: Path):
     b.write_text("extends: a.yaml\ny: 2\n", encoding="utf-8")
     try:
         load_config(a)
-        assert False, "expected circular extends error"
+        raise AssertionError("expected circular extends error")
     except ValueError as exc:
         assert "Circular" in str(exc)
 

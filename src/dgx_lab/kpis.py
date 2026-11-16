@@ -133,9 +133,7 @@ def evaluate_kpis(metrics: dict[str, Any], kpi_config: dict[str, Any]) -> KpiRep
             continue
         actual_v = metrics.get(name)
         if actual_v is None:
-            results.append(
-                GateResult(name, False, None, threshold, op, f"metric {name!r} missing")
-            )
+            results.append(GateResult(name, False, None, threshold, op, f"metric {name!r} missing"))
             continue
         actual = float(actual_v)
         results.append(

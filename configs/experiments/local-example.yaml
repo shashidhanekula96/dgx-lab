@@ -1,0 +1,37 @@
+# Starter experiment — works with any OpenAI-compatible server.
+# Copy it with `dgxlab init-config` and edit `serve:` for your environment.
+#
+# Precedence when running: CLI flag > environment variable > this file > built-in default.
+#   base_url : --base-url  > DGX_LAB_BASE_URL  > serve.base_url
+#   model    : --model     >                     serve.model_name
+#   token    : --token     > $DGX_LAB_API_TOKEN (or the env var named in serve.api_key_env)
+#
+# Tokens never go in this file — only the *name* of the env var that holds one.
+
+name: local-example
+description: Smoke eval against an OpenAI-compatible endpoint.
+
+serve:
+  # Examples (pick one):
+  #   vLLM / SGLang (local) : http://127.0.0.1:8000
+  #   Ollama                : http://127.0.0.1:11434   (run with --no-auth)
+  #   LM Studio             : http://127.0.0.1:1234    (run with --no-auth)
+  #   llama.cpp server      : http://127.0.0.1:8080    (run with --no-auth)
+  #   Remote gateway        : https://your-gateway.example/v1
+  base_url: http://127.0.0.1:8000
+  model_name: your-model-name   # must match an id from `dgxlab check-endpoint`
+  # api_key_env: OPENAI_API_KEY  # optional: read the token from this env var
+  max_tokens: 64                 # default when a golden case has no max_tokens
+  temperature: 0
+
+resources:
+  timeout_s: 120                 # per-request timeout
+
+eval:
+  golden: evals/golden/smoke.jsonl
+
+kpis:
+  config: configs/kpis/default.yaml
+
+tags:
+  - example

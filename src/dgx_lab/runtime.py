@@ -10,22 +10,20 @@ import os
 import re
 import socket
 import subprocess
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import httpx
 
 from dgx_lab import API_TOKEN_ENV
-from dgx_lab.endpoint import EndpointError, assert_loopback_bind, validate_endpoint
+from dgx_lab.endpoint import EndpointError, assert_loopback_bind, auth_headers, validate_endpoint
 from dgx_lab.host import detect_profile, profile_matches_requires
 from dgx_lab.paths import data_root, load_config
 from dgx_lab.tracking import read_lock_record, write_json, write_lock_record
 
 DIGEST_RE = re.compile(r"^sha256:[a-f0-9]{64}$")
-IMAGE_DIGEST_RE = re.compile(
-    r"^(?P<ref>.+?)@(?P<digest>sha256:[a-f0-9]{64})$"
-)
+IMAGE_DIGEST_RE = re.compile(r"^(?P<ref>.+?)@(?P<digest>sha256:[a-f0-9]{64})$")
 
 
 class AdmitError(ValueError):
@@ -48,8 +46,7 @@ def require_vllm_image_env(env: dict[str, str] | None = None) -> str:
     value = env.get("VLLM_IMAGE", "").strip()
     if not value:
         raise AdmitError(
-            "VLLM_IMAGE is required for admit. "
-            "Example: export VLLM_IMAGE='vllm/vllm-openai@sha256:<64hex>'"
+            "VLLM_IMAGE is required for admit. Example: export VLLM_IMAGE='vllm/vllm-openai@sha256:<64hex>'"
         )
     parse_image_pin(value)
     return value
@@ -84,8 +81,7 @@ def buildx_platform_preflight(
         if want_arch in {"arm64", "aarch64"}:
             arch_aliases.update({"arm64", "aarch64"})
         ok = any(
-            p.get("os", "").lower() == want_os
-            and p.get("architecture", "").lower() in arch_aliases
+            p.get("os", "").lower() == want_os and p.get("architecture", "").lower() in arch_aliases
             for p in platforms
         )
         if not ok:
@@ -96,8 +92,7 @@ def buildx_platform_preflight(
             matched.append(req)
         else:
             raise AdmitError(
-                f"Required platform {req} not found for {image}. "
-                f"Platforms seen: {platforms or 'none'}"
+                f"Required platform {req} not found for {image}. Platforms seen: {platforms or 'none'}"
             )
 
     return {
@@ -166,9 +161,7 @@ def admit_candidate(
     profile = detect_profile(probe_docker_gpu=probe_docker_gpu)
     mismatches = profile_matches_requires(profile, requires if isinstance(requires, dict) else {})
     if mismatches:
-        raise AdmitError(
-            "Host does not satisfy candidate requires: " + "; ".join(mismatches)
-        )
+        raise AdmitError("Host does not satisfy candidate requires: " + "; ".join(mismatches))
 
     runtime_platform = (cfg.get("runtime") or {}).get("platform")
     required_platforms: list[str] = []
@@ -192,9 +185,7 @@ def admit_candidate(
         )
         text = proc.stdout + proc.stderr
         if proc.returncode != 0:
-            raise AdmitError(
-                f"buildx imagetools inspect failed for {image}: {text[:400]}"
-            )
+            raise AdmitError(f"buildx imagetools inspect failed for {image}: {text[:400]}")
         preflight = {
             "image": image,
             "platforms": _parse_platforms(text),
@@ -204,13 +195,11 @@ def admit_candidate(
         }
 
     source = (cfg.get("candidate") or {}).get("source") or cfg.get("source")
-    inspected_at = (cfg.get("candidate") or {}).get("inspected_at") or cfg.get(
-        "inspected_at"
-    )
+    inspected_at = (cfg.get("candidate") or {}).get("inspected_at") or cfg.get("inspected_at")
 
     record = {
         "status": "admitted_preflight",
-        "admitted_at": datetime.now(timezone.utc).isoformat(),
+        "admitted_at": datetime.now(UTC).isoformat(),
         "image": image,
         "digest": digest,
         "candidate_config": str(candidate_config.resolve()),
@@ -231,7 +220,7 @@ def admit_candidate(
         "notes": "Preflight only — run smoke on this host before lock.",
     }
     root = root or data_root()
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     out = root / "records" / "admits" / f"{stamp}-{digest[7:15]}.json"
     write_json(out, record)
     write_json(root / "records" / "admit.latest.json", record)
@@ -277,16 +266,11 @@ def smoke_chat(
             assert_loopback_bind(bind_host, allow_non_loopback=False)
         endpoint = validate_endpoint(base_url, token=token, require_token=True)
         if not allow_remote and not endpoint.is_loopback:
-            raise EndpointError(
-                f"Smoke base_url must be loopback unless allow_remote=True, got {base_url}"
-            )
+            raise EndpointError(f"Smoke base_url must be loopback unless allow_remote=True, got {base_url}")
     except EndpointError as exc:
         raise AdmitError(str(exc)) from exc
 
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json",
-    }
+    headers = auth_headers(token)
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": "Reply with exactly: ok"}],
@@ -295,7 +279,7 @@ def smoke_chat(
     }
     with httpx.Client(timeout=timeout) as client:
         resp = client.post(
-            f"{endpoint.base_url.rstrip('/')}/v1/chat/completions",
+            endpoint.api_url("chat/completions"),
             headers=headers,
             json=payload,
         )
@@ -369,7 +353,7 @@ def lock_runtime(
         raise AdmitError(f"Model directory missing for lock: {model_dir}")
 
     payload = {
-        "locked_at": datetime.now(timezone.utc).isoformat(),
+        "locked_at": datetime.now(UTC).isoformat(),
         "image": admit["image"],
         "digest": admit["digest"],
         "model_dir": str(model_dir),

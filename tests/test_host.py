@@ -115,7 +115,10 @@ def test_profile_matches_requires_spark():
         disk_free_gib=800.0,
         hostname="spark-1",
     )
-    assert profile_matches_requires(
-        sparkish,
-        {"arch": ["aarch64", "arm64"], "os": "Linux", "platform": "linux/arm64", "nvidia": True},
-    ) == []
+    assert (
+        profile_matches_requires(
+            sparkish,
+            {"arch": ["aarch64", "arm64"], "os": "Linux", "platform": "linux/arm64", "nvidia": True},
+        )
+        == []
+    )

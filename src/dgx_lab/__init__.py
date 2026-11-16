@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """dgx-lab — multi-OS config-as-code comparison lab for OpenAI-compatible runtimes."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 AUTHOR = "Shashikanth Dhanekula"
 SPDX_LICENSE = "MIT"

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/shashidhanekula96/dgx-lab/security/advisories/new
+    about: Please report security issues privately, not as public issues.
+  - name: Connection help
+    url: https://github.com/shashidhanekula96/dgx-lab/blob/main/docs/connecting.md
+    about: Recipes and troubleshooting for vLLM, Ollama, LM Studio, llama.cpp and gateways.

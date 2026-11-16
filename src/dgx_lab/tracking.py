@@ -11,7 +11,7 @@ import os
 import re
 import secrets
 import shutil
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +23,28 @@ from dgx_lab.paths import data_root, ensure_data_layout, load_config
 
 RUN_ID_RE = re.compile(r"^[0-9]{8}T[0-9]{6}Z-[a-f0-9]{8}$")
 
+# Config keys that must never carry a literal secret (run records are plain files
+# that people share). Use ``serve.api_key_env`` to name an env var instead.
+SECRET_KEYS = frozenset(
+    {"token", "api_key", "apikey", "api-key", "api_token", "password", "secret", "hf_token"}
+)
+
+
+def find_inline_secrets(config: Any, prefix: str = "") -> list[str]:
+    """Return dotted paths of config keys that look like literal secrets."""
+    hits: list[str] = []
+    if isinstance(config, dict):
+        for key, value in config.items():
+            path = f"{prefix}.{key}" if prefix else str(key)
+            if str(key).lower() in SECRET_KEYS and isinstance(value, str) and value.strip():
+                hits.append(path)
+            else:
+                hits.extend(find_inline_secrets(value, path))
+    elif isinstance(config, list):
+        for i, item in enumerate(config):
+            hits.extend(find_inline_secrets(item, f"{prefix}[{i}]"))
+    return hits
+
 
 def records_dir(root: Path | None = None) -> Path:
     root = ensure_data_layout(root or data_root())
@@ -30,7 +52,7 @@ def records_dir(root: Path | None = None) -> Path:
 
 
 def _utc_stamp() -> str:
-    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
 
 
 def _short_hash(payload: bytes) -> str:
@@ -50,7 +72,9 @@ def new_run_id(frozen: dict[str, Any]) -> str:
 
 def run_dir(run_id: str, root: Path | None = None) -> Path:
     if not RUN_ID_RE.match(run_id):
-        raise ValueError(f"Invalid run id: {run_id}")
+        raise ValueError(
+            f"Invalid run id: {run_id!r} (expected e.g. 20260101T120000Z-1a2b3c4d; see `dgxlab status`)"
+        )
     return records_dir(root) / "runs" / run_id
 
 
@@ -72,6 +96,13 @@ def create_run(
 ) -> tuple[str, Path]:
     """Freeze experiment config into a new run record. Returns (run_id, run_dir)."""
     cfg = load_config(config_path)
+    secrets_found = find_inline_secrets(cfg)
+    if secrets_found:
+        raise ValueError(
+            "Refusing to record a config with inline secrets at: "
+            + ", ".join(secrets_found)
+            + ". Put the token in an env var (DGX_LAB_API_TOKEN, or name one via serve.api_key_env)."
+        )
     frozen = freeze_config(cfg)
     run_id = new_run_id(frozen)
     dest = run_dir(run_id, root)
@@ -86,7 +117,7 @@ def create_run(
     # Drop bulky check details from the stored host summary if needed — keep checks.
     meta = {
         "run_id": run_id,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "source_config": str(config_path.resolve()),
         "status": "created",
         "operator": _operator_name(),
@@ -115,13 +146,16 @@ def update_run_status(
     root: Path | None = None,
     metrics: dict[str, Any] | None = None,
     notes: str | None = None,
+    extra: dict[str, Any] | None = None,
 ) -> None:
     dest = run_dir(run_id, root)
     meta = read_json(dest / "meta.json")
     meta["status"] = status
-    meta["updated_at"] = datetime.now(timezone.utc).isoformat()
+    meta["updated_at"] = datetime.now(UTC).isoformat()
     if notes:
         meta["notes"] = notes
+    if extra:
+        meta.update(extra)
     write_json(dest / "meta.json", meta)
     if metrics is not None:
         write_json(dest / "metrics.json", metrics)
