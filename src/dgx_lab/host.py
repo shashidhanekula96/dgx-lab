@@ -366,9 +366,7 @@ def profile_matches_requires(profile: HostProfile, requires: dict[str, Any] | No
         else:
             alts = {got}
         expected = (
-            {want_platform.lower()}
-            if isinstance(want_platform, str)
-            else {p.lower() for p in want_platform}
+            {want_platform.lower()} if isinstance(want_platform, str) else {p.lower() for p in want_platform}
         )
         if not (alts & expected):
             errors.append(f"platform={got} (require {sorted(expected)})")

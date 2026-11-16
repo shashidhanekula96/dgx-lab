@@ -26,14 +26,17 @@ htmlcov/
 .vscode/
 *.swp
 
-# Local lab data (lives under ~/dgx-lab, but ignore if symlinked)
-dgx-lab/
-records/
-logs/
-models/
-datasets/
-adapters/
-evals/results/
+# Local lab data (lives under ~/dgx-lab, but ignore if symlinked into the repo).
+# Anchored with / so they never hide source folders deeper in the tree.
+/dgx-lab/
+/records/
+/logs/
+/models/
+/datasets/
+/adapters/
+/evals/results/
+.api_token
+dgx-lab.yaml
 
 # uv / lock noise (keep uv.lock if present)
 *.log

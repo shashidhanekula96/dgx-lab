@@ -7,13 +7,22 @@ from __future__ import annotations
 import json
 import re
 import time
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import httpx
 
-from dgx_lab.endpoint import validate_endpoint
+from dgx_lab.endpoint import Endpoint, auth_headers, validate_endpoint
+
+DEFAULT_MAX_TOKENS = 64
+
+
+def _short_body(resp: httpx.Response, limit: int = 200) -> str:
+    """Server error text collapsed to one line (HTML error pages get noisy)."""
+    text = re.sub(r"<[^>]+>", " ", resp.text or "")
+    return " ".join(text.split())[:limit]
 
 
 @dataclass
@@ -23,7 +32,7 @@ class EvalCase:
     expect_contains: list[str] = field(default_factory=list)
     expect_regex: list[str] = field(default_factory=list)
     expect_json_keys: list[str] = field(default_factory=list)
-    max_tokens: int = 64
+    max_tokens: int | None = None  # None -> experiment default
 
 
 @dataclass
@@ -63,7 +72,10 @@ def load_golden_jsonl(path: Path) -> list[EvalCase]:
             line = line.strip()
             if not line:
                 continue
-            raw = json.loads(line)
+            try:
+                raw = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"Invalid JSON in golden file {path}:{line_no}: {exc}") from exc
             try:
                 cases.append(
                     EvalCase(
@@ -72,11 +84,13 @@ def load_golden_jsonl(path: Path) -> list[EvalCase]:
                         expect_contains=list(raw.get("expect_contains") or []),
                         expect_regex=list(raw.get("expect_regex") or []),
                         expect_json_keys=list(raw.get("expect_json_keys") or []),
-                        max_tokens=int(raw.get("max_tokens") or 64),
+                        max_tokens=int(raw["max_tokens"]) if raw.get("max_tokens") else None,
                     )
                 )
-            except KeyError as exc:
-                raise ValueError(f"Invalid golden case at {path}:{line_no}: {exc}") from exc
+            except (KeyError, TypeError) as exc:
+                raise ValueError(f"Invalid golden case at {path}:{line_no}: missing {exc}") from exc
+    if not cases:
+        raise ValueError(f"Golden file has no cases: {path}")
     return cases
 
 
@@ -124,9 +138,12 @@ def run_golden_eval(
     golden_path: Path,
     *,
     base_url: str = "http://127.0.0.1:8000",
-    token: str,
+    token: str | None = None,
     model: str = "qwen3-8b",
     timeout: float = 120.0,
+    temperature: float = 0.0,
+    default_max_tokens: int = DEFAULT_MAX_TOKENS,
+    allow_no_auth: bool = False,
     client_factory: Callable[[], httpx.Client] | None = None,
     responder: Callable[[EvalCase], tuple[str, int | None, int | None]] | None = None,
 ) -> EvalReport:
@@ -135,39 +152,36 @@ def run_golden_eval(
 
     ``responder`` may be injected for unit tests (returns text, completion_tokens, prompt_tokens).
     Endpoint rules: loopback may use http://; remote/cluster requires https:// + token.
+    ``allow_no_auth`` permits a token-less loopback server (Ollama, LM Studio, ...).
     """
-    endpoint = None
+    endpoint: Endpoint | None = None
     if responder is None:
-        endpoint = validate_endpoint(base_url, token=token, require_token=True)
-        resolved_base = endpoint.base_url
-    else:
-        resolved_base = base_url
+        endpoint = validate_endpoint(base_url, token=token, require_token=True, allow_no_auth=allow_no_auth)
 
     cases = load_golden_jsonl(golden_path)
     results: list[CaseResult] = []
     format_flags: list[bool] = []
 
     def _default_call(case: EvalCase) -> tuple[str, int | None, int | None]:
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-        }
+        assert endpoint is not None
         payload = {
             "model": model,
             "messages": case.messages,
-            "max_tokens": case.max_tokens,
-            "temperature": 0,
+            "max_tokens": case.max_tokens or default_max_tokens,
+            "temperature": temperature,
         }
         factory = client_factory or (lambda: httpx.Client(timeout=timeout))
         with factory() as client:
             resp = client.post(
-                f"{resolved_base.rstrip('/')}/v1/chat/completions",
-                headers=headers,
+                endpoint.api_url("chat/completions"),
+                headers=auth_headers(token),
                 json=payload,
             )
-            resp.raise_for_status()
+            if resp.status_code >= 400:
+                # Short, token-free error: status + first part of the server message.
+                raise RuntimeError(f"HTTP {resp.status_code}: {_short_body(resp)}")
             data = resp.json()
-        text = data["choices"][0]["message"]["content"] or ""
+        text = data["choices"][0]["message"].get("content") or ""
         usage = data.get("usage") or {}
         return text, usage.get("completion_tokens"), usage.get("prompt_tokens")
 
@@ -214,3 +228,30 @@ def run_golden_eval(
         tokens_per_second=tps,
         format_validity_rate=format_rate,
     )
+
+
+def list_models(
+    endpoint: Endpoint,
+    *,
+    token: str | None = None,
+    timeout: float = 15.0,
+    client_factory: Callable[[], httpx.Client] | None = None,
+) -> list[str]:
+    """GET ``/v1/models`` and return model ids (connectivity + auth check)."""
+    factory = client_factory or (lambda: httpx.Client(timeout=timeout))
+    with factory() as client:
+        resp = client.get(endpoint.api_url("models"), headers=auth_headers(token))
+    if resp.status_code in (401, 403):
+        raise RuntimeError(
+            f"HTTP {resp.status_code}: endpoint rejected the credentials (check DGX_LAB_API_TOKEN / --token)"
+        )
+    if resp.status_code in (404, 405, 501):
+        raise RuntimeError(
+            f"HTTP {resp.status_code}: server does not implement GET /v1/models "
+            "(check the base URL; some servers only expose /v1/chat/completions)"
+        )
+    if resp.status_code >= 400:
+        raise RuntimeError(f"HTTP {resp.status_code}: {_short_body(resp)}")
+    data = resp.json()
+    items = data.get("data") if isinstance(data, dict) else None
+    return [str(m.get("id")) for m in (items or []) if isinstance(m, dict) and m.get("id")]

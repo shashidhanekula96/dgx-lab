@@ -113,7 +113,7 @@ def test_lock_requires_smoke(tmp_path: Path, monkeypatch):
     records.mkdir(parents=True)
     digest = "sha256:" + ("c" * 64)
     (records / "admit.latest.json").write_text(
-        '{"image": "vllm/vllm-openai@%s", "digest": "%s"}' % (digest, digest),
+        f'{{"image": "vllm/vllm-openai@{digest}", "digest": "{digest}"}}',
         encoding="utf-8",
     )
     model = tmp_path / "models" / "qwen3-8b"

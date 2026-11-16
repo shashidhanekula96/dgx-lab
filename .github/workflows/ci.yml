@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - run: uv sync --frozen --group dev
+      - run: uv run ruff check src tests
+      - run: uv run ruff format --check src tests
+      - name: Shell syntax
+        run: bash -n scripts/phase1
+
+  test:
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.11", "3.12", "3.13"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --frozen --group dev
+      - run: uv run pytest -q
+
+  package:
+    # Proves `pip install` users get working defaults without cloning the repo.
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - run: uv build
+      - name: Install wheel in a clean venv and smoke the CLI outside the repo
+        run: |
+          uv venv /tmp/venv
+          uv pip install --python /tmp/venv/bin/python dist/*.whl
+          cd "$(mktemp -d)"
+          /tmp/venv/bin/dgxlab --version
+          /tmp/venv/bin/dgxlab credits
+          /tmp/venv/bin/dgxlab init-config -o exp.yaml
+          /tmp/venv/bin/python -c "from dgx_lab.paths import bundled_default as b; [print(b(k)) for k in ('golden','kpis','experiment')]"

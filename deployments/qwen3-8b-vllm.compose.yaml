@@ -5,7 +5,7 @@
 
 services:
   vllm:
-    image: ${VLLM_IMAGE}
+    image: ${VLLM_IMAGE:?set VLLM_IMAGE to a digest-pinned image}
     # Platform is not hardcoded. For a single-arch image, set e.g.:
     #   export COMPOSE_DOCKER_CLI_BUILD=1
     #   docker compose -f ... up --pull always
@@ -17,7 +17,9 @@ services:
       - "${SERVE_BIND_HOST:-127.0.0.1}:${SERVE_PORT:-8000}:8000"
     environment:
       HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN:-}
-      VLLM_API_KEY: ${DGX_LAB_API_TOKEN}
+      # vLLM reads its API key from VLLM_API_KEY. Passing it via env (not
+      # --api-key) keeps the token out of the container's process list.
+      VLLM_API_KEY: ${DGX_LAB_API_TOKEN:?set DGX_LAB_API_TOKEN}
     volumes:
       - ${MODEL_DIR:-${HOME}/dgx-lab/models/qwen3-8b}:/models/qwen3-8b:ro
       - ${DGX_LAB_ROOT:-${HOME}/dgx-lab}/logs/vllm:/var/log/vllm
@@ -36,13 +38,13 @@ services:
       - "0.0.0.0"
       - --port
       - "8000"
-      - --api-key
-      - ${DGX_LAB_API_TOKEN}
       - --gpu-memory-utilization
       - ${GPU_MEMORY_UTILIZATION:-0.75}
       - --max-model-len
       - ${MAX_MODEL_LEN:-8192}
-      - --trust-remote-code
+      # --trust-remote-code is intentionally NOT set: it executes Python from the
+      # model repo. Qwen3 does not need it. If a model does, add it in a local
+      # compose override file after reviewing that repo's code.
     healthcheck:
       test:
         [
