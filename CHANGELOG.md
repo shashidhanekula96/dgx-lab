@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Manual `Release` workflow (Actions → Release → Run workflow) that tags `main`, builds, and publishes a GitHub Release from CHANGELOG notes.
+
 ## [0.2.0] - 2026-11-16
 
 Public-readiness release: works from a plain `pip install`, connects to any

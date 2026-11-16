@@ -45,3 +45,10 @@ uv run dgxlab check-host
 - Do not commit `.env`, `.api_token`, model weights, run records, or lab data
   under `~/dgx-lab`.
 - Add a line to `CHANGELOG.md` under *Unreleased*.
+
+## Releasing (maintainers)
+
+1. Bump `version` in `pyproject.toml` and `src/dgx_lab/__init__.py`, move *Unreleased*
+   notes under a new `## [x.y.z] - YYYY-MM-DD` heading in `CHANGELOG.md`, merge to `main`.
+2. Actions → **Release** → *Run workflow* on `main` → enter `x.y.z`.
+   It tests, builds, tags `vx.y.z`, and publishes the GitHub Release with wheel + sdist.
