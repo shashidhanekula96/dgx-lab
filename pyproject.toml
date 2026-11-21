@@ -1,6 +1,6 @@
 [project]
 name = "dgx-lab"
-version = "0.2.0"
+version = "0.2.1"
 description = "Config-as-code eval harness for OpenAI-compatible LLM endpoints (vLLM, Ollama, LM Studio, gateways)"
 readme = "README.md"
 requires-python = ">=3.11"

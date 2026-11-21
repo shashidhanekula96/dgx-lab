@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-21
+
 ### Security
 
 - Upgraded locked dependencies; `certifi` 2026.7.22 → 2026.11.20 fixes PYSEC-2026-4320.

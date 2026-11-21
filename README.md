@@ -14,7 +14,7 @@ diff against later runs.
 - **Secure by default.** Plain HTTP only on loopback, tokens only in headers, secrets never stored.
 - **Optional GPU serving.** Includes a digest-pinned vLLM workflow (NVIDIA DGX Spark profile included).
 
-> Status: **alpha (0.2.0)**. The CLI and run-record format may still change.
+> Status: **alpha (0.2.1)**. The CLI and run-record format may still change.
 
 **Author:** Shashikanth Dhanekula · **License:** MIT
 
@@ -25,9 +25,10 @@ diff against later runs.
 Requires Python 3.11+.
 
 ```bash
-# Option A: install the CLI straight from GitHub (no clone)
-uv tool install git+https://github.com/shashidhanekula96/dgx-lab
-# or: pipx install git+https://github.com/shashidhanekula96/dgx-lab
+# Option A: install the CLI from PyPI
+uv tool install dgx-lab
+# or: pipx install dgx-lab   ·   or: pip install dgx-lab
+# (latest unreleased main: uv tool install git+https://github.com/shashidhanekula96/dgx-lab)
 
 # Option B: work from a clone (needed for scripts/phase1 and editing configs)
 git clone https://github.com/shashidhanekula96/dgx-lab && cd dgx-lab
@@ -168,7 +169,7 @@ and Windows across Python 3.11–3.13.
 
 ```text
 $ dgxlab credits
-dgx-lab 0.2.0
+dgx-lab 0.2.1
 Copyright (c) 2026 Shashikanth Dhanekula
 Author: Shashikanth Dhanekula
 License: MIT (SPDX-License-Identifier: MIT)
