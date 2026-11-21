@@ -36,6 +36,13 @@ htmlcov/
 /adapters/
 /evals/results/
 .api_token
+
+# Model weights: never commit, even by accident
+*.gguf
+*.safetensors
+*.pt
+*.pth
+*.onnx
 dgx-lab.yaml
 
 # uv / lock noise (keep uv.lock if present)

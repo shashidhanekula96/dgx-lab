@@ -133,6 +133,11 @@ PY
 cmd_serve() {
   : "${VLLM_IMAGE:?VLLM_IMAGE required}"
   : "${DGX_LAB_API_TOKEN:?DGX_LAB_API_TOKEN required}"
+  case "${SERVE_BIND_HOST}" in
+    0.0.0.0 | :: | "[::]" | "")
+      die "Refusing to publish on all interfaces (${SERVE_BIND_HOST:-<empty>}); set SERVE_BIND_HOST to 127.0.0.1 or one specific interface IP"
+      ;;
+  esac
   if ! is_loopback_host "${SERVE_BIND_HOST}"; then
     if [[ "${ALLOW_NON_LOOPBACK_BIND}" != "1" ]]; then
       die "Refusing to publish on ${SERVE_BIND_HOST}; set ALLOW_NON_LOOPBACK_BIND=1 to opt in (still requires API token)"

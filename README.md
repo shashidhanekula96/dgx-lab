@@ -12,11 +12,14 @@ diff against later runs.
 - **Bring your own endpoint.** Local loopback or remote HTTPS, on Linux, macOS, or Windows.
 - **Reproducible.** Each run freezes the merged config, host profile, and metrics on disk.
 - **Secure by default.** Plain HTTP only on loopback, tokens only in headers, secrets never stored.
+- **Reasoning-model aware.** Scores only the answer of Qwen3 / DeepSeek-R1 style models, not their `<think>` block.
 - **Optional GPU serving.** Includes a digest-pinned vLLM workflow (NVIDIA DGX Spark profile included).
 
 > Status: **alpha (0.2.1)**. The CLI and run-record format may still change.
 
 **Author:** Shashikanth Dhanekula · **License:** MIT
+
+**Contents:** [Install](#install) · [Quick start](#quick-start-5-minutes) · [Configuration](#configuration) · [Security](#security-model) · [Run records](#whats-stored-in-a-run-record) · [GPU serving](#optional-serve-a-model-on-your-own-gpu-docker--nvidia) · [Help](#getting-help) · [Contributing](#contributing)
 
 ---
 
@@ -35,6 +38,10 @@ git clone https://github.com/shashidhanekula96/dgx-lab && cd dgx-lab
 uv sync --group dev
 uv run dgxlab --version        # prefix commands with `uv run` in a clone
 ```
+
+Upgrade with `uv tool upgrade dgx-lab` (or `pip install -U dgx-lab`). Remove with
+`uv tool uninstall dgx-lab`. Your run records under `~/dgx-lab` are left in place;
+delete that folder yourself if you no longer need them.
 
 ## Quick start (5 minutes)
 
@@ -99,6 +106,11 @@ A golden file is JSONL, one case per line:
 Checks: `expect_contains` (case-insensitive substrings), `expect_regex`, and
 `expect_json_keys` (the reply must contain a JSON object with those keys).
 
+**Reasoning models** (Qwen3, DeepSeek-R1, QwQ): the `<think>...</think>` block, or a
+separate `reasoning_content` field, is removed before scoring and kept on the case for
+debugging. Thinking uses up `max_tokens`, so give these models more room. See
+[docs/connecting.md](docs/connecting.md#reasoning-models).
+
 ### KPI gates
 
 [`configs/kpis/default.yaml`](configs/kpis/default.yaml) sets `min` / `max` on
@@ -116,7 +128,14 @@ Tune these for your hardware. The defaults are smoke-test floors, not benchmarks
 - Configs that contain literal secrets (`token:`, `api_key:`, ...) are refused before anything is written.
 - The bundled vLLM compose file publishes on `127.0.0.1` only, passes the token via env (not argv), and doesn't enable `--trust-remote-code`.
 
-See [SECURITY.md](SECURITY.md) to report a vulnerability.
+- Model replies are treated as untrusted data: matched and stored, never executed.
+- Releases are published to PyPI with Trusted Publishing (no stored tokens) and carry
+  provenance attestations. `main` and release tags are protected.
+
+Full details, the supply-chain setup and an operator hardening checklist are in
+[SECURITY.md](SECURITY.md). **Found a vulnerability? Report it privately** through the
+[Security tab](https://github.com/shashidhanekula96/dgx-lab/security/advisories/new),
+not as a public issue.
 
 ## What's stored in a run record
 
@@ -158,6 +177,15 @@ and [docs/phase1-status.md](docs/phase1-status.md).
 - [Lab architecture](docs/lab-architecture.md)
 - [Project context](docs/project-context.md)
 - [Spark profile notes](docs/spark-lab-plan.md)
+
+## Getting help
+
+1. Check [docs/connecting.md](docs/connecting.md): backend recipes and a troubleshooting table.
+2. Re-run with `DGX_LAB_DEBUG=1` for a full traceback.
+3. Still stuck? [Open an issue](https://github.com/shashidhanekula96/dgx-lab/issues/new/choose)
+   with `dgxlab --version` and `dgxlab check-host` output. **Redact tokens and private URLs.**
+4. Security problems go to the
+   [Security tab](https://github.com/shashidhanekula96/dgx-lab/security/advisories/new), never an issue.
 
 ## Contributing
 

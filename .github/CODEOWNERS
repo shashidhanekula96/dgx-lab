@@ -1,0 +1,9 @@
+# Every change is reviewed by the maintainer.
+* @shashidhanekula96
+
+# Supply-chain and security-sensitive paths.
+/.github/                 @shashidhanekula96
+/deployments/             @shashidhanekula96
+/scripts/phase1           @shashidhanekula96
+/src/dgx_lab/endpoint.py  @shashidhanekula96
+/SECURITY.md              @shashidhanekula96
