@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - Manual `Release` workflow (Actions → Release → Run workflow) that tags `main`, builds, and publishes a GitHub Release from CHANGELOG notes.
+- `Publish to PyPI` workflow (Trusted Publishing); the Release workflow triggers it, so new versions install with `pip install dgx-lab`.
 
 ## [0.2.0] - 2026-11-16
 
