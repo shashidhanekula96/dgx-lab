@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Security
+
+- `scripts/phase1 serve` now refuses to publish on all interfaces (`0.0.0.0`, `::`), as the docs
+  already stated; use `127.0.0.1` or one specific interface IP.
+- Expanded `SECURITY.md`: response targets, scope, security model, what run records contain,
+  supply chain and an operator hardening checklist.
+- `.gitattributes` (LF line endings, scripts stay runnable from Windows checkouts), `CODEOWNERS`,
+  and `.gitignore` patterns for model weights.
+
 ### Added
 
 - Reasoning-model support: `<think>` blocks and server-side `reasoning_content` / `reasoning` are separated from the answer before scoring, kept on each case, and counted in `reasoning_cases`. Replies cut off mid-reasoning fail with a hint to raise `max_tokens`. Opt out with `eval.strip_reasoning: false`.

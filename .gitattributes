@@ -1,0 +1,23 @@
+# Normalise line endings: LF in the repository and in every checkout, on every OS.
+# Keeps shell scripts runnable when the repo is cloned on Windows and mounted into
+# Linux (WSL, Docker), and avoids CRLF noise in diffs.
+* text=auto eol=lf
+
+# Shell scripts must be LF or bash fails with "$'\r': command not found".
+scripts/phase1 text eol=lf
+*.sh text eol=lf
+
+# Windows-only scripts keep CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary files: never touch.
+*.png binary
+*.jpg binary
+*.gif binary
+*.gguf binary
+*.safetensors binary
+
+# Generated: collapse in GitHub diffs and leave out of language stats.
+uv.lock linguist-generated=true

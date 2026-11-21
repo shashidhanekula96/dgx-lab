@@ -15,6 +15,9 @@ uv run ruff check src tests && uv run ruff format --check src tests
 uv run dgxlab check-host
 ```
 
+Line endings are normalised to LF by `.gitattributes`, so Windows checkouts work
+without extra git settings. `scripts/phase1` must stay LF.
+
 ## Rules
 
 1. Keep the header on first-party files under `src/`, `tests/`, and `scripts/phase1`
@@ -39,12 +42,15 @@ uv run dgxlab check-host
 
 ## Pull requests
 
+- `main` is protected: every change goes through a pull request, and all CI checks
+  (ruff, plus pytest on Linux/macOS/Windows × Python 3.11-3.13) must pass before merging.
 - Describe the host profile you tested on (`uv run dgxlab check-host`) and, if
   relevant, which backend (vLLM, Ollama, gateway, …).
 - Include pytest output.
 - Do not commit `.env`, `.api_token`, model weights, run records, or lab data
   under `~/dgx-lab`.
 - Add a line to `CHANGELOG.md` under *Unreleased*.
+- Security issues: don't open a PR or issue. Follow [SECURITY.md](SECURITY.md).
 
 ## Releasing (maintainers)
 
@@ -52,3 +58,8 @@ uv run dgxlab check-host
    notes under a new `## [x.y.z] - YYYY-MM-DD` heading in `CHANGELOG.md`, merge to `main`.
 2. Actions → **Release** → *Run workflow* on `main` → enter `x.y.z`.
    It tests, builds, tags `vx.y.z`, and publishes the GitHub Release with wheel + sdist.
+3. The Release workflow then starts **Publish to PyPI**, which re-checks the tag and
+   uploads to PyPI with Trusted Publishing (approve the `pypi` environment if prompted).
+   To retry an existing tag: Actions → **Publish to PyPI** → *Run workflow* → `vx.y.z`.
+4. Release tags are protected and can't be moved or deleted. To fix a bad release,
+   ship a new patch version.
