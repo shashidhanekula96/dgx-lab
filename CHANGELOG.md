@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Security
+
+- Upgraded locked dependencies; `certifi` 2026.7.22 → 2026.11.20 fixes PYSEC-2026-4320.
+- Dependabot version updates for `uv` and GitHub Actions.
+
 ### Added
 
 - Manual `Release` workflow (Actions → Release → Run workflow) that tags `main`, builds, and publishes a GitHub Release from CHANGELOG notes.
