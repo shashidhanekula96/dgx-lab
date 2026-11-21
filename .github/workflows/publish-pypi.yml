@@ -26,7 +26,14 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TAG: ${{ inputs.tag }}
+      GH_TOKEN: ${{ github.token }}
     steps:
+      - name: Only publish from main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "Run this workflow from the main branch (got $GITHUB_REF)" >&2
+          exit 1
+
       - name: Validate tag
         run: |
           # Plain semver tag only (also blocks shell injection).
@@ -37,6 +44,16 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: refs/tags/${{ inputs.tag }}
+          fetch-depth: 0
+
+      - name: Tag must be a published GitHub Release on main
+        run: |
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft \
+            --jq 'if .isDraft then error("release is a draft") else "release ok" end'
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$(git rev-parse "$TAG^{commit}")" origin/main; then
+            echo "Tag $TAG is not on main" >&2; exit 1
+          fi
 
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
         with:
