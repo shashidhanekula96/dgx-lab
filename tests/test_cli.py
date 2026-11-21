@@ -59,3 +59,23 @@ def test_cli_check_host(capsys):
     assert main(["check-host"]) == 0
     out = capsys.readouterr().out
     assert "HOST PROFILE: OK" in out or "os=" in out
+
+
+def test_resolve_run_settings_strip_reasoning(tmp_path: Path):
+    import argparse
+
+    import pytest
+
+    from dgx_lab.cli import CliError, resolve_run_settings
+
+    args = argparse.Namespace()
+    base = {"serve": {"model_name": "m"}}
+    assert resolve_run_settings(base, args, config_origin=None).strip_reasoning is True
+
+    off = {**base, "eval": {"strip_reasoning": False}}
+    settings = resolve_run_settings(off, args, config_origin=None)
+    assert settings.strip_reasoning is False
+    assert settings.public()["strip_reasoning"] is False
+
+    with pytest.raises(CliError, match="strip_reasoning"):
+        resolve_run_settings({**base, "eval": {"strip_reasoning": "no"}}, args, config_origin=None)

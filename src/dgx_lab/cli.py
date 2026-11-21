@@ -55,6 +55,7 @@ class RunSettings:
     timeout_s: float
     max_tokens: int
     temperature: float
+    strip_reasoning: bool = True
 
     def public(self) -> dict[str, Any]:
         """Token-free view stored on the run record."""
@@ -67,6 +68,7 @@ class RunSettings:
             "timeout_s": self.timeout_s,
             "max_tokens": self.max_tokens,
             "temperature": self.temperature,
+            "strip_reasoning": self.strip_reasoning,
         }
 
 
@@ -113,7 +115,8 @@ def resolve_run_settings(
     if not model:
         raise CliError("No model configured. Set serve.model_name in the experiment or pass --model")
 
-    golden_value = getattr(args, "golden", None) or _section(cfg, "eval").get("golden")
+    eval_cfg = _section(cfg, "eval")
+    golden_value = getattr(args, "golden", None) or eval_cfg.get("golden")
     kpi_value = getattr(args, "kpi_config", None) or _section(cfg, "kpis").get("config")
     golden = (
         resolve_resource(golden_value, relative_to=config_origin)
@@ -141,7 +144,14 @@ def resolve_run_settings(
         timeout_s=timeout_s,
         max_tokens=max_tokens,
         temperature=temperature,
+        strip_reasoning=_as_bool(eval_cfg.get("strip_reasoning", True), "eval.strip_reasoning"),
     )
+
+
+def _as_bool(value: Any, name: str) -> bool:
+    if isinstance(value, bool):
+        return value
+    raise CliError(f"{name} must be true or false, got {value!r}")
 
 
 def cmd_run(args: argparse.Namespace) -> int:
@@ -194,6 +204,7 @@ def _execute_run(run_id: str, args: argparse.Namespace) -> int:
             temperature=settings.temperature,
             default_max_tokens=settings.max_tokens,
             allow_no_auth=settings.no_auth,
+            strip_reasoning=settings.strip_reasoning,
         )
         metrics = report.to_dict()
         kpi_report = evaluate_kpis(metrics, load_kpi_config(settings.kpi_config))

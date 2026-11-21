@@ -29,6 +29,7 @@ resources:
 
 eval:
   golden: evals/golden/smoke.jsonl
+  # strip_reasoning: true        # score only the answer of reasoning models (<think>...</think>)
 
 kpis:
   config: configs/kpis/default.yaml

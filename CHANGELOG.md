@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Reasoning-model support: `<think>` blocks and server-side `reasoning_content` / `reasoning` are separated from the answer before scoring, kept on each case, and counted in `reasoning_cases`. Replies cut off mid-reasoning fail with a hint to raise `max_tokens`. Opt out with `eval.strip_reasoning: false`.
+
 ## [0.2.1] - 2026-11-21
 
 ### Security
