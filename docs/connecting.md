@@ -127,6 +127,22 @@ API. Check your provider's terms and pricing before running large eval suites.
 
 ---
 
+## Reasoning models
+
+Models such as Qwen3, DeepSeek-R1 and QwQ "think" before answering, either inline as
+`<think>...</think>` or in a separate `reasoning_content` / `reasoning` field (vLLM and
+SGLang with `--reasoning-parser`, Ollama). dgx-lab scores **only the final answer**:
+inline reasoning blocks are stripped before the substring, regex and JSON checks run.
+
+- The reasoning is kept on each case in `metrics.json` (`reasoning`, capped at 4,000
+  characters) and the run reports how many cases had it (`reasoning_cases`).
+- Thinking uses up completion tokens. The bundled smoke cases allow 16-64 tokens, which
+  is often not enough. If a reply runs out inside the reasoning block, the case fails with
+  a hint telling you to raise `max_tokens` or disable thinking.
+- To score the raw output instead, set `eval.strip_reasoning: false` in the experiment.
+
+---
+
 ## Troubleshooting
 
 | Symptom | Fix |
@@ -138,4 +154,5 @@ API. Check your provider's terms and pricing before running large eval suites.
 | `HTTP 404` on every case | Wrong base URL path (gateway prefix?) or wrong `serve.model_name`. Run `check-endpoint`. |
 | `server does not implement GET /v1/models` | Fine for some servers. Skip `check-endpoint` and run directly. |
 | Every case fails, `tokens_per_second` = 0 | The server didn't return `usage`. Loosen the `tokens_per_second` gate in your KPI file. |
+| `reply ended inside the reasoning block` | A reasoning model (Qwen3, DeepSeek-R1) spent all of `max_tokens` thinking. Raise `serve.max_tokens` / the case's `max_tokens`, or turn thinking off (`/no_think` for Qwen3). See [Reasoning models](#reasoning-models). |
 | Need a full traceback | Re-run with `DGX_LAB_DEBUG=1`. |
